@@ -8,7 +8,7 @@ resource "aws_vpc" "prod" {
   }
 }
 
-#2  Create subnets
+#2  Create subnets, >>>>>>>>> internet gateways, associations
 
 resource "aws_subnet" "private1" {
   vpc_id     = aws_vpc.prod.id
@@ -38,7 +38,38 @@ resource "aws_subnet" "private3" {
   }
 }
 
-#3  Create security group to allow traffic for ports 22, web, ssl
+resource "aws_subnet" "public1" {
+  vpc_id     = aws_vpc.prod.id
+  cidr_block = var.subnetp1_cidr
+  availability_zone = var.subnet1_az
+  tags = {
+    Name = "subnet1.public"
+    AZ = var.subnet1_az
+  }
+}
+resource "aws_subnet" "public2" {
+  vpc_id     = aws_vpc.prod.id
+  cidr_block = var.subnetp2_cidr
+  availability_zone = var.subnet2_az
+  tags = {
+    Name = "subnet2.public"
+    AZ = var.subnet2_az
+  }
+}
+resource "aws_subnet" "public3" {
+  vpc_id     = aws_vpc.prod.id
+  cidr_block = var.subnetp3_cidr
+  availability_zone = var.subnet3_az
+  tags = {
+    Name = "subnet3.public"
+    AZ = var.subnet3_az
+  }
+}
+
+#>>>>>>  continue with Internet gateways and their associations to public subnets
+
+
+#3  Create security groups to allow web traffic to servers, port 80 for ALB
 resource "aws_security_group" "web" {
   name        = "web"
   description = "Allow web inbound traffic"
@@ -58,13 +89,13 @@ resource "aws_security_group" "web" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  ingress {
-    description = "ssh from remote"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["108.29.90.182/32"]
-  }
+  # ingress {
+  #   description = "ssh from bastion"
+  #   from_port   = 22
+  #   to_port     = 22
+  #   protocol    = "tcp"
+  #   cidr_blocks = ["108.29.90.182/32"]
+  # }
 
   egress {
     from_port   = 0
@@ -77,6 +108,27 @@ resource "aws_security_group" "web" {
     Name = "web_ssh_remote"
   }
 }
+resource "aws_security_group" "alb" {
+
+  name = var.alb_security_group_name
+
+  # Allow inbound HTTP requests
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Allow all outbound requests
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
 
 #4  Create launch configuration
 resource "aws_launch_configuration" "as_web" {
@@ -112,8 +164,8 @@ resource "aws_autoscaling_group" "as_web" {
   launch_configuration = aws_launch_configuration.as_web.name
   vpc_zone_identifier  = data.aws_subnet_ids.prod.ids
 
-  #target_group_arns = [aws_lb_target_group.asg.arn]
-  #health_check_type = "ELB"
+  target_group_arns = [aws_lb_target_group.asg.arn]
+  health_check_type = "ELB"
 
   min_size = 2
   max_size = 4
@@ -126,21 +178,82 @@ resource "aws_autoscaling_group" "as_web" {
 }
 
 #------------------------------------
-
 data "aws_vpc" "prod" {
    default = false
    id = aws_vpc.prod.id
 }
-
 data "aws_subnet_ids" "prod" {
   vpc_id = data.aws_vpc.prod.id
 }
-
 #-------------------------------------
 
-#6  Create target group
+#6  Create ALB
+resource "aws_lb" "public_web" {
 
-#7  Create ALB
+  name               = var.alb_name
+
+  load_balancer_type = "application"
+  subnets            = data.aws_subnet_ids.prod.ids
+  security_groups    = [aws_security_group.alb.id]
+}
+
+#6.1 Create Listener - add Listener rule(s)
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.public_web.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  # By default, return a simple 404 page
+  default_action {
+    type = "fixed-response"
+
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "404: page not found"
+      status_code  = 404
+    }
+  }
+}
+resource "aws_lb_listener_rule" "asg" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 100
+
+  condition {
+    path_pattern {
+      values = ["*"]
+    }
+  }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.asg.arn
+  }
+}
+
+#7  Create Target Group
+
+resource "aws_lb_target_group" "asg" {
+
+  name = var.alb_name
+
+  port     = var.web_server_port
+  protocol = "HTTP"
+  vpc_id   = data.aws_vpc.prod.id
+
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 15
+    timeout             = 3
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+  }
+}
+
+
+
 
 #8 Outputs
 
