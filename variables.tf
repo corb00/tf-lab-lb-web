@@ -35,6 +35,15 @@ variable "subnet3_az" {
   default = "us-west-2c"
 }
 
+variable "subnet4_cidr" {
+  type = string
+  default = "10.0.4.0/24"
+}
+variable "subnet4_az" {
+  type = string
+  default = "us-west-2d"
+}
+
 
 variable "amis" {
   type = map(string)
