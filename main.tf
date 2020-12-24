@@ -16,8 +16,9 @@ resource "aws_subnet" "private1" {
   availability_zone = var.subnet1_az
   tags = {
     Name = "subnet1.private"
+    Tier = "private"
     AZ = var.subnet1_az
-  }
+    }
 }
 resource "aws_subnet" "private2" {
   vpc_id     = aws_vpc.prod.id
@@ -26,6 +27,7 @@ resource "aws_subnet" "private2" {
   tags = {
     Name = "subnet2.private"
     AZ = var.subnet2_az
+    Tier = "private"
   }
 }
 resource "aws_subnet" "private3" {
@@ -35,6 +37,7 @@ resource "aws_subnet" "private3" {
   tags = {
     Name = "subnet3.private"
     AZ = var.subnet3_az
+    Tier = "private"
   }
 }
 
@@ -45,6 +48,7 @@ resource "aws_subnet" "public1" {
   tags = {
     Name = "subnet1.public"
     AZ = var.subnet1_az
+    Tier = "public"
   }
 }
 resource "aws_subnet" "public2" {
@@ -54,6 +58,7 @@ resource "aws_subnet" "public2" {
   tags = {
     Name = "subnet2.public"
     AZ = var.subnet2_az
+    Tier = "public"
   }
 }
 resource "aws_subnet" "public3" {
@@ -63,10 +68,48 @@ resource "aws_subnet" "public3" {
   tags = {
     Name = "subnet3.public"
     AZ = var.subnet3_az
+    Tier = "public"
   }
 }
 
-#>>>>>>  continue with Internet gateways and their associations to public subnets
+    # Create Internet gateway, route table and  and association for public subnets 
+
+resource "aws_internet_gateway" "gw" {
+  vpc_id = aws_vpc.prod.id
+  tags = {
+    Name = "public"
+  }
+}
+
+resource "aws_route_table" "r1" {
+  vpc_id = aws_vpc.prod.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.gw.id
+  }
+  route {
+    ipv6_cidr_block        = "::/0"
+    gateway_id = aws_internet_gateway.gw.id
+  }
+  tags = {
+    Name = "web-main"
+  }
+}
+
+resource "aws_route_table_association" "public1" {
+  subnet_id      = aws_subnet.public1.id
+  route_table_id = aws_route_table.r1.id
+}
+
+resource "aws_route_table_association" "public2" {
+  subnet_id      = aws_subnet.public2.id
+  route_table_id = aws_route_table.r1.id
+}
+
+resource "aws_route_table_association" "public3" {
+  subnet_id      = aws_subnet.public3.id
+  route_table_id = aws_route_table.r1.id
+}
 
 
 #3  Create security groups to allow web traffic to servers, port 80 for ALB
@@ -111,7 +154,8 @@ resource "aws_security_group" "web" {
 resource "aws_security_group" "alb" {
 
   name = var.alb_security_group_name
-
+  vpc_id      = aws_vpc.prod.id
+   
   # Allow inbound HTTP requests
   ingress {
     from_port   = 80
@@ -162,7 +206,7 @@ resource "aws_launch_configuration" "as_web" {
 #5  Create Autoscaling group
 resource "aws_autoscaling_group" "as_web" {
   launch_configuration = aws_launch_configuration.as_web.name
-  vpc_zone_identifier  = data.aws_subnet_ids.prod.ids
+  vpc_zone_identifier  = data.aws_subnet_ids.private.ids
 
   target_group_arns = [aws_lb_target_group.asg.arn]
   health_check_type = "ELB"
@@ -182,8 +226,27 @@ data "aws_vpc" "prod" {
    default = false
    id = aws_vpc.prod.id
 }
-data "aws_subnet_ids" "prod" {
+data "aws_subnet_ids" "public" {
   vpc_id = data.aws_vpc.prod.id
+  filter {
+    name   = "tag:Tier"
+    values = ["public"] # insert values here
+  } 
+  #tags = {
+  #  Tier = "public"
+  #}
+  depends_on = [
+    aws_subnet.public1
+  ]
+}
+data "aws_subnet_ids" "private" {
+  vpc_id = data.aws_vpc.prod.id
+  tags = {
+    Tier = "private"
+  }
+  depends_on = [
+    aws_subnet.private1
+  ]
 }
 #-------------------------------------
 
@@ -193,7 +256,7 @@ resource "aws_lb" "public_web" {
   name               = var.alb_name
 
   load_balancer_type = "application"
-  subnets            = data.aws_subnet_ids.prod.ids
+  subnets            = data.aws_subnet_ids.public.ids
   security_groups    = [aws_security_group.alb.id]
 }
 
