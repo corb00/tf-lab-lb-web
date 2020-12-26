@@ -1,4 +1,3 @@
-
 #1  Create VPC
 resource "aws_vpc" "prod" {
   cidr_block = var.vpc_cidr
@@ -8,8 +7,7 @@ resource "aws_vpc" "prod" {
   }
 }
 
-#2  Create subnets, >>>>>>>>> internet gateways, associations
-
+#2  Create subnets, internet gateways, associations
 resource "aws_subnet" "private1" {
   vpc_id     = aws_vpc.prod.id
   cidr_block = var.subnet1_cidr
@@ -40,7 +38,6 @@ resource "aws_subnet" "private3" {
     Tier = "private"
   }
 }
-
 resource "aws_subnet" "public1" {
   vpc_id     = aws_vpc.prod.id
   cidr_block = var.subnetp1_cidr
@@ -71,16 +68,13 @@ resource "aws_subnet" "public3" {
     Tier = "public"
   }
 }
-
-    # Create Internet gateway, route table and  and association for public subnets 
-
+# Create Internet gateway, route table and  and association for public subnets 
 resource "aws_internet_gateway" "gw" {
   vpc_id = aws_vpc.prod.id
   tags = {
     Name = "public"
   }
 }
-
 resource "aws_route_table" "r1" {
   vpc_id = aws_vpc.prod.id
   route {
@@ -95,22 +89,18 @@ resource "aws_route_table" "r1" {
     Name = "web-main"
   }
 }
-
 resource "aws_route_table_association" "public1" {
   subnet_id      = aws_subnet.public1.id
   route_table_id = aws_route_table.r1.id
 }
-
 resource "aws_route_table_association" "public2" {
   subnet_id      = aws_subnet.public2.id
   route_table_id = aws_route_table.r1.id
 }
-
 resource "aws_route_table_association" "public3" {
   subnet_id      = aws_subnet.public3.id
   route_table_id = aws_route_table.r1.id
 }
-
 
 #3  Create security groups to allow web traffic to servers, port 80 for ALB
 resource "aws_security_group" "web" {
@@ -173,7 +163,6 @@ resource "aws_security_group" "alb" {
   }
 }
 
-
 #4  Create launch configuration
 resource "aws_launch_configuration" "as_web" {
   image_id      = var.amis[var.region]
@@ -221,7 +210,10 @@ resource "aws_autoscaling_group" "as_web" {
   }
 }
 
-#------------------------------------
+#--------------------------------------------------------------
+# Introspection: retrieve public and private subnet id's
+# >>> depends_on is NECESSARY to ensure subnets are present
+#
 data "aws_vpc" "prod" {
    default = false
    id = aws_vpc.prod.id
@@ -248,7 +240,7 @@ data "aws_subnet_ids" "private" {
     aws_subnet.private1
   ]
 }
-#-------------------------------------
+#-------------------------------------------------------------------
 
 #6  Create ALB
 resource "aws_lb" "public_web" {
@@ -261,7 +253,6 @@ resource "aws_lb" "public_web" {
 }
 
 #6.1 Create Listener - add Listener rule(s)
-
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.public_web.arn
   port              = 80
@@ -295,7 +286,6 @@ resource "aws_lb_listener_rule" "asg" {
 }
 
 #7  Create Target Group
-
 resource "aws_lb_target_group" "asg" {
 
   name = var.alb_name
@@ -316,158 +306,9 @@ resource "aws_lb_target_group" "asg" {
 }
 
 
-
-
 #8 Outputs
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# #2  Create Internet Gateway
-# resource "aws_internet_gateway" "gw1" {
-#   vpc_id = aws_vpc.prod.id
-#   tags = {
-#     Name = "web1-internet-gateway"
-#   }
-# }
-
-# #3  Create custom route table
-# resource "aws_route_table" "r1" {
-#   vpc_id = aws_vpc.prod.id
-#   route {
-#     cidr_block = "0.0.0.0/0"
-#     gateway_id = aws_internet_gateway.gw1.id
-#   }
-#   route {
-#     ipv6_cidr_block        = "::/0"
-#     gateway_id = aws_internet_gateway.gw1.id
-#   }
-#   tags = {
-#     Name = "web-main"
-#   }
-# }
-
-# #4  Create a subnet
-# resource "aws_subnet" "public1" {
-#   vpc_id     = aws_vpc.prod.id
-#   cidr_block = var.subnet1_cidr
-#   availability_zone = var.subnet1_az
-#   tags = {
-#     Name = "subnet1.public"
-#     AZ = var.subnet1_az
-#   }
-# }
-
-# #5  Associate subnet with route table
-# resource "aws_route_table_association" "a1" {
-#   subnet_id      = aws_subnet.public1.id
-#   route_table_id = aws_route_table.r1.id
-# }
-
-# #6  Create security group to allow traffic for ports 22, web, ssl
-# resource "aws_security_group" "web" {
-#   name        = "web"
-#   description = "Allow web inbound traffic"
-#   vpc_id      = aws_vpc.prod.id
-
-#   ingress {
-#     description = "TLS from internet"
-#     from_port   = var.web_server_ssl_port
-#     to_port     = var.web_server_ssl_port
-#     protocol    = "tcp"
-#     cidr_blocks = ["0.0.0.0/0"]
-#   }
-#   ingress {
-#     description = "web from internet"
-#     from_port   = var.web_server_port
-#     to_port     = var.web_server_port
-#     protocol    = "tcp"
-#     cidr_blocks = ["0.0.0.0/0"]
-#   }
-#   ingress {
-#     description = "ssh from remote"
-#     from_port   = 22
-#     to_port     = 22
-#     protocol    = "tcp"
-#     cidr_blocks = ["108.29.90.182/32"]
-#   }
-
-#   egress {
-#     from_port   = 0
-#     to_port     = 0
-#     protocol    = "-1"
-#     cidr_blocks = ["0.0.0.0/0"]
-#   }
-
-#   tags = {
-#     Name = "web_ssh_remote"
-#   }
-# }
-
-# #7  Create a ENI with IP in subnet from step 4
-# resource "aws_network_interface" "eni0" {
-#   subnet_id       = aws_subnet.public1.id
-#   security_groups = [aws_security_group.web.id]
-
-#   #attachment {
-#   #  instance     = aws_instance.test.id
-#   #  device_index = 1
-#   #}
-# }
-
-# #8  Assign elastic IP to ENI in Step 7
-# resource "aws_eip" "public1_web1" {
-#   vpc = true
-#   network_interface         = aws_network_interface.eni0.id
-#   depends_on                = [aws_internet_gateway.gw1]
-# }
-
-# #9  Launch Ubuntu WEB instance and install/start apache2
-# resource "aws_instance" "web1" {
-#   ami           = var.amis[var.region]
-#   instance_type = "t2.micro"
-#   # subnet_id = aws_subnet.public1.id
-#   key_name="tf-lab"
-#   network_interface {
-#      device_index         = 0
-#      network_interface_id = aws_network_interface.eni0.id
-#   }
-#   user_data = <<-EOF
-# 		#!/bin/bash
-#     sudo apt-get update
-# 		sudo apt-get install -y apache2
-# 		sudo systemctl start apache2
-# 		sudo systemctl enable apache2
-# 		echo "<h1>Deployed via Terraform</h1>" | sudo tee /var/www/html/index.html
-# 	EOF
-#   tags = {
-#     Name = "web1_instance_in_prod_vpc"
-#     Env = "test"
-#     version = 0.1
-#   }
-# }
 
 # output "server_public_ip" {
 #    value = aws_eip.public1_web1.public_ip
 # }
 
-# output "web_server_port" {
-#    value = var.web_server_port
-# }
-
-# output "web_server_ssl_port" {
-#    value = var.web_server_ssl_port
-# }
