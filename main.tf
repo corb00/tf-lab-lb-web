@@ -79,7 +79,6 @@ resource "aws_internet_gateway" "gw" {
 resource "aws_eip" "nat" {
   vpc = true
 }
-
 resource "aws_nat_gateway" "public1" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public1.id
@@ -106,7 +105,6 @@ resource "aws_route_table" "public" {
     Name = "public-rtable"
   }
 }
-
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.prod.id
   route {
@@ -117,7 +115,6 @@ resource "aws_route_table" "private" {
     Name = "private-rtable"
   }
 }
-
 
 resource "aws_route_table_association" "public1" {
   subnet_id      = aws_subnet.public1.id
@@ -144,9 +141,6 @@ resource "aws_route_table_association" "private3" {
   subnet_id      = aws_subnet.private3.id
   route_table_id = aws_route_table.private.id
 }
-
-
-
 
 #3  Create security groups to allow web traffic to servers, port 80 for ALB
 resource "aws_security_group" "web" {
@@ -224,11 +218,13 @@ resource "aws_launch_configuration" "as_web" {
 
   user_data = <<-EOF
 		#!/bin/bash
-    sudo apt-get update
-		sudo apt-get install -y apache2
-		sudo systemctl start apache2
-		sudo systemctl enable apache2
-		echo "<h1>Deployed via Terraform OK</h1>" | sudo tee /var/www/html/index.html
+    sudo apt update
+    sudo apt install -y nginx
+    sudo ufw allow 'Nginx HTTP'
+    sudo systemctl enable nginx
+    sudo systemctl start nginx 
+
+    #echo "<h1>Deployed via Terraform OK</h1>" | sudo tee /var/www/html/index.html
 	EOF
   
   # Required when using a launch configuration with an auto scaling group. 
