@@ -68,39 +68,85 @@ resource "aws_subnet" "public3" {
     Tier = "public"
   }
 }
-# Create Internet gateway, route table and  and association for public subnets 
+# Create Internet gateway, NAT gw + EIP, route tables and all associations
 resource "aws_internet_gateway" "gw" {
   vpc_id = aws_vpc.prod.id
   tags = {
     Name = "public"
   }
 }
-resource "aws_route_table" "r1" {
+
+resource "aws_eip" "nat" {
+  vpc = true
+}
+
+resource "aws_nat_gateway" "public1" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public1.id
+
+  tags = {
+    Name = "NAT gateway"
+  }
+
+  depends_on = [aws_internet_gateway.gw]
+
+}
+
+resource "aws_route_table" "public" {
   vpc_id = aws_vpc.prod.id
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.gw.id
   }
-  route {
-    ipv6_cidr_block        = "::/0"
-    gateway_id = aws_internet_gateway.gw.id
-  }
+  # route {
+  #   ipv6_cidr_block        = "::/0"
+  #   gateway_id = aws_internet_gateway.gw.id
+  # }
   tags = {
-    Name = "web-main"
+    Name = "public-rtable"
   }
 }
+
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.prod.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_nat_gateway.public1.id
+  }
+    tags = {
+    Name = "private-rtable"
+  }
+}
+
+
 resource "aws_route_table_association" "public1" {
   subnet_id      = aws_subnet.public1.id
-  route_table_id = aws_route_table.r1.id
+  route_table_id = aws_route_table.public.id
 }
 resource "aws_route_table_association" "public2" {
   subnet_id      = aws_subnet.public2.id
-  route_table_id = aws_route_table.r1.id
+  route_table_id = aws_route_table.public.id
 }
 resource "aws_route_table_association" "public3" {
   subnet_id      = aws_subnet.public3.id
-  route_table_id = aws_route_table.r1.id
+  route_table_id = aws_route_table.public.id
 }
+
+resource "aws_route_table_association" "private1" {
+  subnet_id      = aws_subnet.private1.id
+  route_table_id = aws_route_table.private.id
+}
+resource "aws_route_table_association" "private2" {
+  subnet_id      = aws_subnet.private2.id
+  route_table_id = aws_route_table.private.id
+}
+resource "aws_route_table_association" "private3" {
+  subnet_id      = aws_subnet.private3.id
+  route_table_id = aws_route_table.private.id
+}
+
+
+
 
 #3  Create security groups to allow web traffic to servers, port 80 for ALB
 resource "aws_security_group" "web" {
